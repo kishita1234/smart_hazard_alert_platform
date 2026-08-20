@@ -1,0 +1,1 @@
+# smart_hazard_alert_platform
