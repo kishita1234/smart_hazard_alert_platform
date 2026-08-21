@@ -3,7 +3,15 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_db
 
+import reports
+import user
+import incident
+
 app = FastAPI()
+
+app.include_router(reports.router)
+app.include_router(user.router)
+app.include_router(incident.router)
 
 @app.get("/health")
 async def health(db: AsyncSession = Depends(get_db)):
