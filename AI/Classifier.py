@@ -1,6 +1,7 @@
 import os
 import json
 import mimetypes
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -8,6 +9,8 @@ from google import genai
 from google.genai import types
 
 from prompt import WATERLOGGING_PROMPT
+from validator import validate_result
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -21,6 +24,7 @@ if not api_key:
     )
 
 client = genai.Client(api_key=api_key)
+
 
 def classify_image(image_path):
 
@@ -107,28 +111,19 @@ def classify_image(image_path):
 
     result = json.loads(response.text)
 
-    if result["confidence"] < 0.70:
-
-        result["type"] = "unverified"
-
-        result["severity"] = 0
-
-        result["reasoning"] = (
-            "Model confidence is below 0.70; "
-            "pending more reports."
-        )
-
+    # Validate and normalize AI result
+    result = validate_result(result)
 
     # Unverified always has severity 0
     if result["type"] == "unverified":
-
         result["severity"] = 0
-
 
     return result
 
+
 if __name__ == "__main__":
-    import sys
+
+    test_folder = PROJECT_ROOT / "AI" / "test images"
 
     if len(sys.argv) != 2:
         print("Usage: python AI/Classifier.py <image_path>")
@@ -139,6 +134,7 @@ if __name__ == "__main__":
     result = classify_image(image_path)
 
     print("\nStructured AI Result:")
+
     print(
         json.dumps(
             result,
