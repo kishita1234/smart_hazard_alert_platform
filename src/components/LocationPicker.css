@@ -1,0 +1,53 @@
+.location-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.location-search {
+    display: flex;
+    gap: 8px;
+}
+
+.location-search input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #777;
+    border-radius: 6px;
+}
+
+.location-search button,
+.location-picker > button {
+    padding: 10px 14px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.location-search button:disabled,
+.location-picker > button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.exif-location {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.location-error {
+    margin: 0;
+    font-weight: bold;
+}
+
+.location-result {
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #777;
+}
+
+.location-result p {
+    margin: 5px 0;
+}
