@@ -128,23 +128,20 @@ def classify_image(image_path):
     return result
 
 if __name__ == "__main__":
+    import sys
 
-    test_folder = PROJECT_ROOT / "AI" / "test images"
+    if len(sys.argv) != 2:
+        print("Usage: python AI/Classifier.py <image_path>")
+        sys.exit(1)
 
-import sys
+    image_path = sys.argv[1]
 
-if len(sys.argv) != 2:
-    print("Usage: python AI/Classifier.py <image_path>")
-    sys.exit(1)
+    result = classify_image(image_path)
 
-image_path = sys.argv[1]
-
-result = classify_image(image_path)
-
-print("\nStructured AI Result:")
-print(
-    json.dumps(
-        result,
-        indent=2
+    print("\nStructured AI Result:")
+    print(
+        json.dumps(
+            result,
+            indent=2
+        )
     )
-)
