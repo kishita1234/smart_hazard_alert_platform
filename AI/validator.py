@@ -1,72 +1,107 @@
+ALLOWED_TYPES = {
+    "waterlogging",
+    "fire",
+    "road_damage",
+    "blocked_road",
+    "accident",
+    "no_hazard",
+    "unverified",
+}
+
+MIN_CONFIDENCE = 0.70
+
+
 def validate_result(result):
-    """
-    Validate and normalize the structured result
-    returned by the AI classifier.
-    """
 
-    required_fields = [
-        "type",
-        "severity",
-        "confidence",
-        "reasoning"
-    ]
+    if not isinstance(result, dict):
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": 0,
+            "reasoning": "Invalid AI result."
+        }
 
-    # Check required fields
-    for field in required_fields:
-        if field not in result:
-            raise ValueError(
-                f"Missing required field: {field}"
-            )
+    hazard_type = result.get("type")
+    severity = result.get("severity")
+    confidence = result.get("confidence")
+    reasoning = result.get("reasoning")
 
-    # Check type
-    allowed_types = [
+    # Validate hazard type
+    if hazard_type not in ALLOWED_TYPES:
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": 0,
+            "reasoning": "AI returned an unsupported hazard type."
+        }
+
+    # Validate confidence
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError):
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": 0,
+            "reasoning": "AI returned an invalid confidence value."
+        }
+
+    if not 0 <= confidence <= 1:
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": 0,
+            "reasoning": "AI returned an invalid confidence value."
+        }
+
+    # Low confidence means unverified
+    if confidence < MIN_CONFIDENCE:
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": confidence,
+            "reasoning": "AI confidence is below the required threshold."
+        }
+
+    # Validate severity
+    try:
+        severity = int(severity)
+    except (TypeError, ValueError):
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": confidence,
+            "reasoning": "AI returned an invalid severity value."
+        }
+
+    # no_hazard and unverified must have severity 0
+    if hazard_type in {"no_hazard", "unverified"}:
+        severity = 0
+
+    # All actual hazards must have severity 1-4
+    elif hazard_type in {
         "waterlogging",
-        "no_waterlogging",
-        "unverified"
-    ]
+        "fire",
+        "road_damage",
+        "blocked_road",
+        "accident",
+    }:
 
-    if result["type"] not in allowed_types:
-        raise ValueError(
-            f"Invalid classification type: {result['type']}"
-        )
+        if severity < 1 or severity > 4:
+            return {
+                "type": "unverified",
+                "severity": 0,
+                "confidence": confidence,
+                "reasoning": "AI returned an invalid hazard severity."
+            }
 
-    # Check severity
-    severity = result["severity"]
+    # Validate reasoning
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        reasoning = "No reasoning provided."
 
-    if not isinstance(severity, int):
-        raise ValueError(
-            "Severity must be an integer."
-        )
-
-    if severity < 0 or severity > 4:
-        raise ValueError(
-            "Severity must be between 0 and 4."
-        )
-
-    # Check confidence
-    confidence = result["confidence"]
-
-    if not isinstance(confidence, (int, float)):
-        raise ValueError(
-            "Confidence must be a number."
-        )
-
-    if confidence < 0 or confidence > 1:
-        raise ValueError(
-            "Confidence must be between 0 and 1."
-        )
-
-    # Rules for non-waterlogging results
-    if result["type"] == "no_waterlogging":
-        result["severity"] = 0
-
-    # Rules for unverified results
-    if result["type"] == "unverified":
-        result["severity"] = 0
-
-    # Low confidence → unverified
-    if confidence < 0.70:
-        result["type"] = "unverified"
-        result["severity"] = 0
-
-    return result
+    return {
+        "type": hazard_type,
+        "severity": severity,
+        "confidence": confidence,
+        "reasoning": reasoning.strip()
+    }
