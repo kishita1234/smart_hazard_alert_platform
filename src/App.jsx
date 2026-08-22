@@ -2,8 +2,19 @@ import { useState } from 'react'
 import './App.css'
 import Map from './Map'
 import ProfileDropdown from './components/ProfileDropdown'
+import AdminLogin from './components/AdminLogin'
+import LocationPicker from './components/LocationPicker'
 
 function App() {
+
+  /* =========================
+     ADMIN PAGE
+     ========================= */
+
+  if (window.location.pathname === '/admin') {
+    return <AdminLogin />
+  }
+
 
   /* =========================
      REPORTS
@@ -30,6 +41,8 @@ function App() {
   const [statusSearch, setStatusSearch] = useState('')
   const [statusResult, setStatusResult] = useState(null)
 
+  const [selectedLocation, setSelectedLocation] = useState(null)
+
 
   /* =========================
      REPORT MODAL
@@ -41,6 +54,7 @@ function App() {
 
   const closeReport = () => {
     setReportOpen(false)
+    setSelectedLocation(null)
   }
 
 
@@ -69,8 +83,27 @@ function App() {
     const formData = new FormData(e.target)
 
     const issueType = formData.get('issueType')
-    const location = formData.get('location')
+    const hazardLevel = formData.get('hazardLevel')
     const description = formData.get('description')
+
+
+    /* =========================
+       LOCATION VALIDATION
+       ========================= */
+
+    if (!selectedLocation) {
+
+      alert(
+        'Please select or detect a location before submitting.'
+      )
+
+      return
+    }
+
+
+    /* =========================
+       CREATE REPORT
+       ========================= */
 
     const newReport = {
 
@@ -78,7 +111,9 @@ function App() {
 
       issueType,
 
-      location,
+      hazardLevel,
+
+      location: selectedLocation,
 
       description,
 
@@ -89,6 +124,10 @@ function App() {
     }
 
 
+    /* =========================
+       UPDATE REPORTS
+       ========================= */
+
     const updatedReports = [
       ...reports,
       newReport
@@ -96,6 +135,7 @@ function App() {
 
 
     setReports(updatedReports)
+
 
     localStorage.setItem(
       'drishtiReports',
@@ -105,6 +145,12 @@ function App() {
 
     setReportOpen(false)
 
+    setSelectedLocation(null)
+
+
+    /* =========================
+       SUCCESS MESSAGE
+       ========================= */
 
     alert(
       `Report submitted successfully!\n\nYour Report ID is:\n${newReport.id}\n\nPlease save this ID to check your report status.`
@@ -231,7 +277,9 @@ function App() {
       <main>
 
 
-        {/* ALERT TABS */}
+        {/* =========================
+            ALERT TABS
+           ========================= */}
 
         <div className="tabs">
 
@@ -254,18 +302,27 @@ function App() {
         </div>
 
 
-        {/* MAP + ALERTS */}
+        {/* =========================
+            MAP + ALERTS
+           ========================= */}
 
         <div className="content">
+
+
+          {/* MAP */}
 
           <section className="map-section">
 
             <div className="map-placeholder">
+
               <Map />
+
             </div>
 
           </section>
 
+
+          {/* ALERT SIDEBAR */}
 
           <aside
             className="alerts"
@@ -277,41 +334,54 @@ function App() {
             </h2>
 
 
-            <div className="alert critical">
+            {/* SCROLLABLE REPORT AREA */}
 
-              <strong>
-                Critical (Red)
-              </strong>
+            <div className="alerts-list">
 
-              <p>
-                Road collapse on Sect. 18 Main Rd
-              </p>
+              {reports.length === 0 ? (
 
-            </div>
+                <p className="no-reports">
+                  No hazard reports yet.
+                </p>
 
+              ) : (
 
-            <div className="alert caution">
+                reports.map((report) => (
 
-              <strong>
-                Caution (Yellow)
-              </strong>
+                  <div
+                    key={report.id}
+                    className={`alert ${(report.hazardLevel || 'Caution').toLowerCase()}`}
+                  >
 
-              <p>
-                Minor waterlogging on Sect. 29 Service Rd
-              </p>
-
-            </div>
+                    <strong>
+                      {report.hazardLevel || 'Caution'}
+                    </strong>
 
 
-            <div className="alert resolved">
+                    <p>
+                      {report.issueType}
+                    </p>
 
-              <strong>
-                Resolved (Green)
-              </strong>
 
-              <p>
-                Cleared debris on Sect. 18 Main Rd
-              </p>
+                    <p>
+                      {report.description}
+                    </p>
+
+
+                    <small>
+                      Report ID: {report.id}
+                    </small>
+
+
+                    <small>
+                      Status: {report.status}
+                    </small>
+
+                  </div>
+
+                ))
+
+              )}
 
             </div>
 
@@ -320,7 +390,9 @@ function App() {
         </div>
 
 
-        {/* REPORT BUTTON */}
+        {/* =========================
+            REPORT BUTTON
+           ========================= */}
 
         <button
           className="report-button"
@@ -348,11 +420,15 @@ function App() {
             onClick={(e) => e.stopPropagation()}
           >
 
+
+            {/* MODAL HEADER */}
+
             <div className="modal-header">
 
               <h2>
                 REPORT A HAZARD
               </h2>
+
 
               <button
                 className="modal-close"
@@ -364,14 +440,19 @@ function App() {
             </div>
 
 
+            {/* REPORT FORM */}
+
             <form onSubmit={handleSubmit}>
 
+
+              {/* ISSUE TYPE */}
 
               <div className="form-group">
 
                 <label>
                   Issue Type
                 </label>
+
 
                 <select
                   name="issueType"
@@ -382,25 +463,31 @@ function App() {
                     Select an issue
                   </option>
 
+
                   <option value="Waterlogging">
                     Waterlogging
                   </option>
+
 
                   <option value="Road Collapse">
                     Road Collapse
                   </option>
 
+
                   <option value="Blocked Drain">
                     Blocked Drain
                   </option>
+
 
                   <option value="Debris / Obstruction">
                     Debris / Obstruction
                   </option>
 
+
                   <option value="Flooding">
                     Flooding
                   </option>
+
 
                   <option value="Other">
                     Other
@@ -411,27 +498,63 @@ function App() {
               </div>
 
 
+              {/* HAZARD LEVEL */}
+
               <div className="form-group">
 
                 <label>
-                  Location
+                  Hazard Level
                 </label>
 
-                <input
-                  name="location"
-                  type="text"
-                  placeholder="Enter location"
+
+                <select
+                  name="hazardLevel"
                   required
+                >
+
+                  <option value="">
+                    Select hazard level
+                  </option>
+
+
+                  <option value="Critical">
+                    🔴 Critical
+                  </option>
+
+
+                  <option value="Caution">
+                    🟡 Caution
+                  </option>
+
+
+                  <option value="Low">
+                    🟢 Low
+                  </option>
+
+                </select>
+
+              </div>
+
+
+              {/* LOCATION */}
+
+              <div className="form-group">
+
+                <LocationPicker
+                  onLocationChange={setSelectedLocation}
                 />
 
               </div>
 
+
+              {/* DESCRIPTION */}
 
               <div className="form-group">
 
                 <label>
                   Description
                 </label>
+
 
                 <textarea
                   name="description"
@@ -443,11 +566,14 @@ function App() {
               </div>
 
 
+              {/* PHOTO */}
+
               <div className="form-group">
 
                 <label>
                   Upload Photo
                 </label>
+
 
                 <input
                   name="photo"
@@ -458,7 +584,10 @@ function App() {
               </div>
 
 
+              {/* ACTIONS */}
+
               <div className="modal-actions">
+
 
                 <button
                   type="button"
@@ -468,12 +597,14 @@ function App() {
                   CANCEL
                 </button>
 
+
                 <button
                   type="submit"
                   className="submit-button"
                 >
                   SUBMIT REPORT
                 </button>
+
 
               </div>
 
@@ -502,11 +633,15 @@ function App() {
             onClick={(e) => e.stopPropagation()}
           >
 
+
+            {/* HEADER */}
+
             <div className="modal-header">
 
               <h2>
                 CHECK REPORT STATUS
               </h2>
+
 
               <button
                 className="modal-close"
@@ -518,6 +653,8 @@ function App() {
             </div>
 
 
+            {/* SEARCH */}
+
             <form onSubmit={checkStatus}>
 
               <div className="form-group">
@@ -525,6 +662,7 @@ function App() {
                 <label>
                   Report ID
                 </label>
+
 
                 <input
                   type="text"
@@ -555,6 +693,7 @@ function App() {
 
               <div className="status-result">
 
+
                 {statusResult === 'not-found' ? (
 
                   <>
@@ -562,6 +701,7 @@ function App() {
                     <h3>
                       ❌ Report Not Found
                     </h3>
+
 
                     <p>
                       We couldn't find a report with that ID.
@@ -577,38 +717,59 @@ function App() {
                       Report Found
                     </h3>
 
+
                     <p>
                       <strong>
                         Report ID:
                       </strong>{' '}
+
                       {statusResult.id}
                     </p>
+
 
                     <p>
                       <strong>
                         Issue:
                       </strong>{' '}
+
                       {statusResult.issueType}
                     </p>
+
+
+                    <p>
+                      <strong>
+                        Hazard Level:
+                      </strong>{' '}
+
+                      {statusResult.hazardLevel || 'Caution'}
+                    </p>
+
 
                     <p>
                       <strong>
                         Location:
                       </strong>{' '}
-                      {statusResult.location}
+
+                      {statusResult.location?.latitude
+                        ? `${statusResult.location.latitude}, ${statusResult.location.longitude}`
+                        : 'Location unavailable'}
                     </p>
+
 
                     <p>
                       <strong>
                         Status:
                       </strong>{' '}
+
                       {statusResult.status}
                     </p>
+
 
                     <p>
                       <strong>
                         Submitted:
                       </strong>{' '}
+
                       {statusResult.date}
                     </p>
 
