@@ -24,6 +24,62 @@ async def get_incidents(db: AsyncSession = Depends(get_db)):
     return {"incidents": [dict(row) for row in rows]}
 
 
+@router.get("/incidents/nearby")
+async def get_nearby_incidents(
+    lat: float,
+    lng: float,
+    radius: float = 2000,
+    db: AsyncSession = Depends(get_db)
+):
+    query = text("""
+        select id, hazard_type, severity, status, report_count,
+               verified_at, created_at,
+               ST_X(geom::geometry) as longitude,
+               ST_Y(geom::geometry) as latitude,
+               ST_Distance(geom, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) as distance_meters
+        from incidents
+        where verified_at is not null
+          and ST_DWithin(geom, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radius)
+        order by distance_meters asc
+    """)
+    result = await db.execute(query, {"lat": lat, "lng": lng, "radius": radius})
+    rows = result.mappings().all()
+    return {"incidents": [dict(row) for row in rows]}
+
+
+@router.get("/incidents/{incident_id}")
+async def get_incident_detail(incident_id: str, db: AsyncSession = Depends(get_db)):
+    incident_query = text("""
+        select id, hazard_type, severity, status, report_count,
+               verified_at, created_at,
+               ST_X(geom::geometry) as longitude,
+               ST_Y(geom::geometry) as latitude
+        from incidents
+        where id = :id
+    """)
+    incident_result = await db.execute(incident_query, {"id": incident_id})
+    incident_row = incident_result.mappings().first()
+
+    if not incident_row:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    reports_query = text("""
+        select id, user_id, hazard_type, severity, image_url, status, created_at,
+               ST_X(geom::geometry) as longitude,
+               ST_Y(geom::geometry) as latitude
+        from reports
+        where incident_id = :id
+        order by created_at desc
+    """)
+    reports_result = await db.execute(reports_query, {"id": incident_id})
+    report_rows = reports_result.mappings().all()
+
+    return {
+        "incident": dict(incident_row),
+        "reports": [dict(r) for r in report_rows]
+    }
+
+
 class IncidentStatusUpdate(BaseModel):
     status: str
 
