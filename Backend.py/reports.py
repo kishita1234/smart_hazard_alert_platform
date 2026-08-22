@@ -1,15 +1,19 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 from db import get_db
 from schema import ReportCreate
 
 router = APIRouter()
 
-RADIUS_M = 100
-THRESHOLD = 3
-TIME_WINDOW = "1 hour"
+# --- clustering ke rules (ek jagah, badalna ho to yahin) ---
+RADIUS_M = 100          # itne meter ke andar = same cluster
+THRESHOLD = 3           # itne reports pe incident verified
+TIME_WINDOW = "1 hour"  # itni der ke andar ke reports ek saath
 
+
+# ============ POST /reports — naya report + clustering ============
 @router.post("/reports")
 async def create_report(report: ReportCreate, db: AsyncSession = Depends(get_db)):
     point = "ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography"
@@ -82,3 +86,55 @@ async def create_report(report: ReportCreate, db: AsyncSession = Depends(get_db)
 
     await db.commit()
     return {"report_id": str(report_id), "incident_id": str(incident_id), "verified": verified}
+
+
+# ============ GET /reports — saari reports (filters ke saath) ============
+@router.get("/reports")
+async def list_reports(
+    hazard_type: Optional[str] = None,
+    status: Optional[str] = None,
+    severity: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    sql = """select id, hazard_type, status, severity,
+                    ST_Y(geom::geometry) as lat,
+                    ST_X(geom::geometry) as lng,
+                    created_at
+             from reports"""
+    conditions = []
+    params = {}
+    if hazard_type:
+        conditions.append("hazard_type = :hazard_type")
+        params["hazard_type"] = hazard_type
+    if status:
+        conditions.append("status = :status")
+        params["status"] = status
+    if severity:
+        conditions.append("severity = :severity")
+        params["severity"] = severity
+    if conditions:
+        sql += " where " + " and ".join(conditions)
+    sql += " order by created_at desc"
+
+    res = await db.execute(text(sql), params)
+    return {"reports": [dict(r) for r in res.mappings().all()]}
+
+
+# ============ GET /reports/{report_id} — ek report ka detail ============
+@router.get("/reports/{report_id}")
+async def get_report(report_id: str, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(
+        text("""
+            select id, hazard_type, status, severity,
+                   ST_Y(geom::geometry) as lat,
+                   ST_X(geom::geometry) as lng,
+                   incident_id, created_at
+            from reports
+            where id = :report_id
+        """),
+        {"report_id": report_id},
+    )
+    row = res.mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"report": dict(row)}
