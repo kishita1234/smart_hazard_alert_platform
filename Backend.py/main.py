@@ -9,6 +9,7 @@ import reports
 import user
 import incident
 import storage
+import classify
 
 app = FastAPI()
 app.add_middleware(
@@ -25,6 +26,7 @@ app.include_router(reports.router)
 app.include_router(user.router)
 app.include_router(incident.router)
 app.include_router(storage.router)
+app.include_router(classify.router)
 
 @app.get("/health")
 async def health(db: AsyncSession = Depends(get_db)):
