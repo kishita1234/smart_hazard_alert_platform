@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from prompt import WATERLOGGING_PROMPT
+from prompt import HAZARD_DETECTION_PROMPT
 from validator import validate_result
 
 
@@ -21,12 +21,16 @@ api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("GEMINI_API_KEY was not found in .env")
 
-client = genai.Client(
-    api_key=api_key,
-    http_options=types.HttpOptions(
-        timeout=10000
-    )
-)
+client = genai.Client(api_key=api_key)
+
+
+def unavailable_result(reason):
+    return {
+        "type": "unverified",
+        "severity": 0,
+        "confidence": 0,
+        "reasoning": reason
+    }
 
 
 def classify_image(image_path):
@@ -38,7 +42,6 @@ def classify_image(image_path):
             f"Image not found: {image_path}"
         )
 
-    # Detect image format
     mime_type, _ = mimetypes.guess_type(image_path)
 
     if not mime_type or not mime_type.startswith("image/"):
@@ -46,7 +49,6 @@ def classify_image(image_path):
             f"Unsupported image type: {image_path}"
         )
 
-    # Read image
     image_bytes = image_path.read_bytes()
 
     response_schema = {
@@ -56,7 +58,11 @@ def classify_image(image_path):
                 "type": "STRING",
                 "enum": [
                     "waterlogging",
-                    "no_waterlogging",
+                    "fire",
+                    "road_damage",
+                    "blocked_road",
+                    "accident",
+                    "no_hazard",
                     "unverified"
                 ]
             },
@@ -82,8 +88,8 @@ def classify_image(image_path):
         ]
     }
 
-    # Call Gemini
     try:
+
         response = client.models.generate_content(
             model="gemini-3.6-flash",
 
@@ -92,7 +98,7 @@ def classify_image(image_path):
                     data=image_bytes,
                     mime_type=mime_type
                 ),
-                WATERLOGGING_PROMPT
+                HAZARD_DETECTION_PROMPT
             ],
 
             config=types.GenerateContentConfig(
@@ -103,33 +109,24 @@ def classify_image(image_path):
         )
 
     except Exception as e:
+
         print(f"Gemini API error: {e}")
 
-        return {
-            "type": "unverified",
-            "severity": 0,
-            "confidence": 0,
-            "reasoning": "AI classification is temporarily unavailable."
-        }
+        return unavailable_result(
+            "AI classification is temporarily unavailable."
+        )
 
-    # Convert Gemini JSON response into Python dictionary
     try:
+
         result = json.loads(response.text)
 
     except (json.JSONDecodeError, TypeError):
-        return {
-            "type": "unverified",
-            "severity": 0,
-            "confidence": 0,
-            "reasoning": "AI returned an invalid response."
-        }
 
-    # Validate and normalize AI result
+        return unavailable_result(
+            "AI returned an invalid response."
+        )
+
     result = validate_result(result)
-
-    # Unverified always has severity 0
-    if result["type"] == "unverified":
-        result["severity"] = 0
 
     return result
 
@@ -137,12 +134,17 @@ def classify_image(image_path):
 if __name__ == "__main__":
 
     if len(sys.argv) != 2:
-        print("Usage: python AI/Classifier.py <image_path>")
+
+        print(
+            "Usage: python AI/Classifier.py <image_path>"
+        )
+
         sys.exit(1)
 
     image_path = sys.argv[1]
 
     try:
+
         result = classify_image(image_path)
 
         print("\nStructured AI Result:")
@@ -155,5 +157,7 @@ if __name__ == "__main__":
         )
 
     except Exception as e:
+
         print(f"Error: {e}")
+
         sys.exit(1)

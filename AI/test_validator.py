@@ -2,60 +2,131 @@ from validator import validate_result
 
 
 def test_valid_waterlogging():
-    result = {
+
+    result = validate_result({
         "type": "waterlogging",
         "severity": 3,
         "confidence": 0.95,
-        "reasoning": "Standing water is visible."
-    }
+        "reasoning": "Road is covered by standing water."
+    })
 
-    validated = validate_result(result)
-
-    assert validated["type"] == "waterlogging"
-    assert validated["severity"] == 3
-    assert validated["confidence"] == 0.95
+    assert result["type"] == "waterlogging"
+    assert result["severity"] == 3
+    assert result["confidence"] == 0.95
 
 
-def test_no_waterlogging_forces_zero_severity():
-    result = {
-        "type": "no_waterlogging",
+def test_valid_fire():
+
+    result = validate_result({
+        "type": "fire",
+        "severity": 3,
+        "confidence": 0.92,
+        "reasoning": "Visible flames are present."
+    })
+
+    assert result["type"] == "fire"
+    assert result["severity"] == 3
+
+
+def test_valid_road_damage():
+
+    result = validate_result({
+        "type": "road_damage",
+        "severity": 2,
+        "confidence": 0.90,
+        "reasoning": "A large pothole is visible."
+    })
+
+    assert result["type"] == "road_damage"
+    assert result["severity"] == 2
+
+
+def test_valid_blocked_road():
+
+    result = validate_result({
+        "type": "blocked_road",
+        "severity": 3,
+        "confidence": 0.88,
+        "reasoning": "Debris blocks the road."
+    })
+
+    assert result["type"] == "blocked_road"
+    assert result["severity"] == 3
+
+
+def test_valid_accident():
+
+    result = validate_result({
+        "type": "accident",
+        "severity": 3,
+        "confidence": 0.91,
+        "reasoning": "Two damaged vehicles are visible after a collision."
+    })
+
+    assert result["type"] == "accident"
+    assert result["severity"] == 3
+
+
+def test_no_hazard():
+
+    result = validate_result({
+        "type": "no_hazard",
         "severity": 4,
-        "confidence": 0.98,
-        "reasoning": "The road is dry."
-    }
+        "confidence": 0.95,
+        "reasoning": "The road is clear."
+    })
 
-    validated = validate_result(result)
-
-    assert validated["type"] == "no_waterlogging"
-    assert validated["severity"] == 0
+    assert result["type"] == "no_hazard"
+    assert result["severity"] == 0
 
 
-def test_low_confidence_becomes_unverified():
-    result = {
-        "type": "waterlogging",
+def test_low_confidence():
+
+    result = validate_result({
+        "type": "fire",
         "severity": 3,
         "confidence": 0.50,
-        "reasoning": "The image is unclear."
-    }
+        "reasoning": "Possible flames are visible."
+    })
 
-    validated = validate_result(result)
-
-    assert validated["type"] == "unverified"
-    assert validated["severity"] == 0
+    assert result["type"] == "unverified"
+    assert result["severity"] == 0
 
 
-def test_unverified_forces_zero_severity():
-    result = {
-        "type": "unverified",
+def test_invalid_type():
+
+    result = validate_result({
+        "type": "earthquake",
         "severity": 3,
-        "confidence": 0.80,
-        "reasoning": "More information is required."
-    }
+        "confidence": 0.90,
+        "reasoning": "Something is happening."
+    })
 
-    validated = validate_result(result)
+    assert result["type"] == "unverified"
 
-    assert validated["type"] == "unverified"
-    assert validated["severity"] == 0
+
+def test_invalid_confidence():
+
+    result = validate_result({
+        "type": "fire",
+        "severity": 3,
+        "confidence": 1.5,
+        "reasoning": "Flames are visible."
+    })
+
+    assert result["type"] == "unverified"
+
+
+def test_invalid_severity():
+
+    result = validate_result({
+        "type": "fire",
+        "severity": 7,
+        "confidence": 0.90,
+        "reasoning": "Large fire is visible."
+    })
+
+    assert result["type"] == "unverified"
 
 
 print("All validator tests passed.")
