@@ -1,11 +1,10 @@
 ALLOWED_TYPES = {
     "waterlogging",
-    "fire",
-    "road_damage",
-    "blocked_road",
-    "accident",
     "no_hazard",
-    "unverified",
+    "fire",
+    "road_blockage",
+    "accident",
+    "unverified"
 }
 
 MIN_CONFIDENCE = 0.70
@@ -13,45 +12,89 @@ MIN_CONFIDENCE = 0.70
 
 def validate_result(result):
 
+    # Check that result is a dictionary
     if not isinstance(result, dict):
         return {
             "type": "unverified",
             "severity": 0,
             "confidence": 0,
-            "reasoning": "Invalid AI result."
+            "reasoning": "Invalid AI response format."
         }
 
-    hazard_type = result.get("type")
-    severity = result.get("severity")
-    confidence = result.get("confidence")
-    reasoning = result.get("reasoning")
+    # Required fields
+    required_fields = [
+        "type",
+        "severity",
+        "confidence",
+        "reasoning"
+    ]
 
-    # Validate hazard type
+    for field in required_fields:
+        if field not in result:
+            return {
+                "type": "unverified",
+                "severity": 0,
+                "confidence": 0,
+                "reasoning": f"Missing required field: {field}."
+            }
+
+    hazard_type = result["type"]
+    severity = result["severity"]
+    confidence = result["confidence"]
+    reasoning = result["reasoning"]
+
+    # Validate type
     if hazard_type not in ALLOWED_TYPES:
         return {
             "type": "unverified",
             "severity": 0,
             "confidence": 0,
-            "reasoning": "AI returned an unsupported hazard type."
+            "reasoning": "AI returned an invalid hazard type."
+        }
+
+    # Validate severity
+    if isinstance(severity, bool) or not isinstance(severity, int):
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": 0,
+            "reasoning": "Invalid severity value."
+        }
+
+    if severity < 0 or severity > 4:
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": 0,
+            "reasoning": "Severity must be between 0 and 4."
         }
 
     # Validate confidence
-    try:
-        confidence = float(confidence)
-    except (TypeError, ValueError):
+    if isinstance(confidence, bool) or not isinstance(
+        confidence, (int, float)
+    ):
         return {
             "type": "unverified",
             "severity": 0,
             "confidence": 0,
-            "reasoning": "AI returned an invalid confidence value."
+            "reasoning": "Invalid confidence value."
         }
 
-    if not 0 <= confidence <= 1:
+    if confidence < 0 or confidence > 1:
         return {
             "type": "unverified",
             "severity": 0,
             "confidence": 0,
-            "reasoning": "AI returned an invalid confidence value."
+            "reasoning": "Confidence must be between 0 and 1."
+        }
+
+    # Validate reasoning
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        return {
+            "type": "unverified",
+            "severity": 0,
+            "confidence": 0,
+            "reasoning": "Missing or invalid reasoning."
         }
 
     # Low confidence means unverified
@@ -60,44 +103,34 @@ def validate_result(result):
             "type": "unverified",
             "severity": 0,
             "confidence": confidence,
-            "reasoning": "AI confidence is below the required threshold."
+            "reasoning": reasoning
         }
 
-    # Validate severity
-    try:
-        severity = int(severity)
-    except (TypeError, ValueError):
-        return {
-            "type": "unverified",
-            "severity": 0,
-            "confidence": confidence,
-            "reasoning": "AI returned an invalid severity value."
-        }
-
-    # no_hazard and unverified must have severity 0
-    if hazard_type in {"no_hazard", "unverified"}:
+    # No hazard must always have severity 0
+    if hazard_type == "no_hazard":
         severity = 0
 
-    # All actual hazards must have severity 1-4
-    elif hazard_type in {
+    # Unverified must always have severity 0
+    if hazard_type == "unverified":
+        severity = 0
+
+    # Actual hazards must have severity 1-4
+    if hazard_type in {
         "waterlogging",
         "fire",
-        "road_damage",
-        "blocked_road",
-        "accident",
+        "road_blockage",
+        "accident"
     }:
-
-        if severity < 1 or severity > 4:
+        if severity == 0:
             return {
                 "type": "unverified",
                 "severity": 0,
                 "confidence": confidence,
-                "reasoning": "AI returned an invalid hazard severity."
+                "reasoning": (
+                    "A hazard was detected but its severity "
+                    "could not be determined reliably."
+                )
             }
-
-    # Validate reasoning
-    if not isinstance(reasoning, str) or not reasoning.strip():
-        reasoning = "No reasoning provided."
 
     return {
         "type": hazard_type,

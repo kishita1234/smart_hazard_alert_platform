@@ -24,12 +24,12 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 
 
-def unavailable_result(reason):
+def unavailable_result(message):
     return {
         "type": "unverified",
         "severity": 0,
         "confidence": 0,
-        "reasoning": reason
+        "reasoning": message
     }
 
 
@@ -42,7 +42,7 @@ def classify_image(image_path):
             f"Image not found: {image_path}"
         )
 
-    mime_type, _ = mimetypes.guess_type(image_path)
+    mime_type, _ = mimetypes.guess_type(str(image_path))
 
     if not mime_type or not mime_type.startswith("image/"):
         raise ValueError(
@@ -58,11 +58,10 @@ def classify_image(image_path):
                 "type": "STRING",
                 "enum": [
                     "waterlogging",
-                    "fire",
-                    "road_damage",
-                    "blocked_road",
-                    "accident",
                     "no_hazard",
+                    "fire",
+                    "road_blockage",
+                    "accident",
                     "unverified"
                 ]
             },
@@ -89,7 +88,6 @@ def classify_image(image_path):
     }
 
     try:
-
         response = client.models.generate_content(
             model="gemini-3.6-flash",
 
@@ -109,36 +107,35 @@ def classify_image(image_path):
         )
 
     except Exception as e:
-
         print(f"Gemini API error: {e}")
 
         return unavailable_result(
             "AI classification is temporarily unavailable."
         )
 
-    try:
+    if not response or not response.text:
+        return unavailable_result(
+            "AI returned an empty response."
+        )
 
+    try:
         result = json.loads(response.text)
 
     except (json.JSONDecodeError, TypeError):
-
         return unavailable_result(
-            "AI returned an invalid response."
+            "AI returned an invalid JSON response."
         )
 
-    result = validate_result(result)
-
-    return result
+    return validate_result(result)
 
 
 if __name__ == "__main__":
 
     if len(sys.argv) != 2:
-
         print(
-            "Usage: python AI/Classifier.py <image_path>"
+            "Usage: python AI\\Classifier.py "
+            "\"AI\\test images\\image.png\""
         )
-
         sys.exit(1)
 
     image_path = sys.argv[1]
@@ -159,5 +156,4 @@ if __name__ == "__main__":
     except Exception as e:
 
         print(f"Error: {e}")
-
         sys.exit(1)
