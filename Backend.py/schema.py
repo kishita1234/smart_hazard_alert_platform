@@ -13,3 +13,4 @@ class ReportCreate(BaseModel):
     lng: float
     severity: int | None = None    # optional (AI baad me bharega)
     user_id: str | None = None     # optional abhi
+    image_url: str | None = None

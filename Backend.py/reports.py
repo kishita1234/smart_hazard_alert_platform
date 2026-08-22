@@ -23,12 +23,13 @@ async def create_report(report: ReportCreate, db: AsyncSession = Depends(get_db)
         "lat": report.lat,
         "severity": report.severity,
         "user_id": report.user_id,
+        "image_url": report.image_url,
     }
 
     # STEP 1: report insert
     res = await db.execute(text(f"""
         insert into reports (user_id, hazard_type, geom, severity)
-        values (:user_id, :hazard_type, {point}, :severity)
+        values (:user_id, :hazard_type, {point}, :severity, :image_url)
         returning id
     """), params)
     report_id = res.scalar()
