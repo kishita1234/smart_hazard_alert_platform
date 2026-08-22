@@ -25,7 +25,21 @@ async def create_report(report: ReportCreate, db: AsyncSession = Depends(get_db)
         "user_id": report.user_id,
         "image_url": report.image_url,
     }
-
+    # ANTI-SPAM: same user, bilkul same spot (10m), 2 min me dobara -> block
+    if report.user_id:
+        dupe = await db.execute(text(f"""
+            select id from reports
+            where user_id = :user_id
+              and hazard_type = :hazard_type
+              and created_at > now() - interval '2 minutes'
+              and ST_DWithin(geom, {point}, 10)
+            limit 1
+        """), params)
+        if dupe.first():
+            raise HTTPException(
+                status_code=429,
+                detail="AYou've already reported this location. Please try again shortly."
+            )
     # STEP 1: report insert
     res = await db.execute(text(f"""
         insert into reports (user_id, hazard_type, geom, severity, image_url)
