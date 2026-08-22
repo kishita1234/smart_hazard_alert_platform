@@ -47,6 +47,47 @@ async def get_nearby_incidents(
     return {"incidents": [dict(row) for row in rows]}
 
 
+@router.get("/incidents/stats")
+async def get_incident_stats(db: AsyncSession = Depends(get_db)):
+    hazard_query = text("""
+        select hazard_type, count(*) as total
+        from incidents
+        group by hazard_type
+        order by total desc
+    """)
+    hazard_result = await db.execute(hazard_query)
+    hazard_counts = hazard_result.mappings().all()
+
+    status_query = text("""
+        select
+            count(*) filter (where verified_at is not null) as verified_count,
+            count(*) filter (where verified_at is null) as pending_count
+        from incidents
+    """)
+    status_result = await db.execute(status_query)
+    status_row = status_result.mappings().first()
+
+    hotspot_query = text("""
+        select
+            round(ST_Y(geom::geometry)::numeric, 2) as area_lat,
+            round(ST_X(geom::geometry)::numeric, 2) as area_lng,
+            count(*) as total_incidents,
+            count(*) filter (where verified_at is not null) as verified_incidents
+        from incidents
+        group by area_lat, area_lng
+        order by total_incidents desc
+        limit 10
+    """)
+    hotspot_result = await db.execute(hotspot_query)
+    hotspots = hotspot_result.mappings().all()
+
+    return {
+        "by_hazard_type": [dict(row) for row in hazard_counts],
+        "verified_vs_pending": dict(status_row),
+        "hotspots": [dict(row) for row in hotspots]
+    }
+
+
 @router.get("/incidents/{incident_id}")
 async def get_incident_detail(incident_id: str, db: AsyncSession = Depends(get_db)):
     incident_query = text("""
