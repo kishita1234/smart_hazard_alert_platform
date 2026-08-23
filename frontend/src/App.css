@@ -417,6 +417,42 @@ main {
 }
 
 
+/* severity levels 1-5 (sidebar + map legend) */
+.sev-1 {
+  background: #26382e;
+  color: #c5dccd;
+  border-left-color: #5d9270;
+}
+
+.sev-2 {
+  background: #373326;
+  color: #e7ddb2;
+  border-left-color: #c5a84b;
+}
+
+.sev-3 {
+  background: #3a3428;
+  color: #edd9b8;
+  border-left-color: #d4a056;
+}
+
+.sev-4 {
+  background: #382629;
+  color: #edcaca;
+  border-left-color: #d98585;
+}
+
+.sev-5 {
+  background: #382629;
+  color: #edcaca;
+  border-left-color: #b85c5c;
+}
+
+.sev-1 strong, .sev-2 strong, .sev-3 strong, .sev-4 strong, .sev-5 strong {
+  color: inherit;
+}
+
+
 /* ========================================
    RESOLVED / GREEN
    ======================================== */

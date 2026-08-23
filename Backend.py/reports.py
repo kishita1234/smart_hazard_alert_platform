@@ -9,7 +9,7 @@ router = APIRouter()
 
 # --- clustering ke rules (ek jagah, badalna ho to yahin) ---
 RADIUS_M = 100          # itne meter ke andar = same cluster
-THRESHOLD = 3           # itne reports pe incident verified
+THRESHOLD = 1           # itne reports pe incident verified
 TIME_WINDOW = "1 hour"  # itni der ke andar ke reports ek saath
 
 
@@ -24,7 +24,6 @@ async def create_report(report: ReportCreate, db: AsyncSession = Depends(get_db)
         "severity": report.severity,
         "user_id": report.user_id,
         "image_url": report.image_url,
-        "description": report.description,   # 👈 NAYA
     }
     # ANTI-SPAM: same user, bilkul same spot (10m), 2 min me dobara -> block
     if report.user_id:
@@ -43,8 +42,8 @@ async def create_report(report: ReportCreate, db: AsyncSession = Depends(get_db)
             )
     # STEP 1: report insert
     res = await db.execute(text(f"""
-        insert into reports (user_id, hazard_type, geom, severity, image_url, description)
-        values (:user_id, :hazard_type, {point}, :severity, :image_url, :description)
+        insert into reports (user_id, hazard_type, geom, severity, image_url)
+        values (:user_id, :hazard_type, {point}, :severity, :image_url)
         returning id
     """), params)
     report_id = res.scalar()

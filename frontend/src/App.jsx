@@ -1,13 +1,26 @@
 import { useState, useEffect } from 'react'
 import './App.css'
-import Map from './map'
+import HazardMap from './map'
 import ProfileDropdown from './components/ProfileDropdown'
 import AdminLogin from './components/AdminLogin'
 import LocationPicker from './components/LocationPicker'
 import axiosClient from './axios'
 
 const RADIUS = { local: 500, area: 2000, zone: 5000 }
-const severityMap = { Critical: 5, Caution: 3, Low: 1 }
+
+const RADIUS_LABEL = {
+  local: 'Within 500m of your location',
+  area: 'Within 2km of your location',
+  zone: 'Within 5km of your location',
+}
+
+// AI se jo bhi severity word/number aaye, usko backend ke number (1-5) me convert karo
+const toSeverityInt = (sev) => {
+  if (typeof sev === 'number') { return Math.min(5, Math.max(1, sev)) }
+  if (!sev) return 1
+  const map = { low: 1, caution: 2, moderate: 3, medium: 3, high: 4, critical: 5, severe: 5 }
+  return map[String(sev).toLowerCase()] || 1
+}
 
 function App() {
 
@@ -17,6 +30,8 @@ function App() {
 
   /* ========== STATE ========== */
   const [incidents, setIncidents] = useState([])
+  const [searchIncidents, setSearchIncidents] = useState([])
+  const [searchedLocation, setSearchedLocation] = useState(null)
   const [userLoc, setUserLoc] = useState(null)
   const [activeTab, setActiveTab] = useState('live')
   const [nearbyAlert, setNearbyAlert] = useState(null)
@@ -26,6 +41,14 @@ function App() {
   const [statusSearch, setStatusSearch] = useState('')
   const [statusResult, setStatusResult] = useState(null)
   const [selectedLocation, setSelectedLocation] = useState(null)
+
+  /* ========== PHOTO + AI CLASSIFY STATE ========== */
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageUrl, setImageUrl] = useState(null)
+  const [detecting, setDetecting] = useState(false)
+  const [detectedType, setDetectedType] = useState(null)
+  const [detectedSeverity, setDetectedSeverity] = useState(null)
+  const [classifyError, setClassifyError] = useState(null)
 
   /* ========== USER LOCATION (mount) ========== */
   useEffect(() => {
@@ -37,26 +60,76 @@ function App() {
   }, [])
 
   /* ========== FETCH INCIDENTS (tab-wise) ========== */
-  const loadIncidents = async (tab, loc) => {
+  const loadIncidents = async (tab, loc, signal) => {
     try {
       if (tab === 'live') {
-        const res = await axiosClient.get('/incidents')
+        const res = await axiosClient.get('/incidents', { signal })
         setIncidents(res?.data?.incidents || [])
       } else {
         if (!loc) return
         const res = await axiosClient.get('/incidents/nearby', {
           params: { lat: loc.lat, lng: loc.lng, radius: RADIUS[tab] },
+          signal,
         })
         setIncidents(res?.data?.incidents || res?.data || [])
       }
     } catch (err) {
+      if (err?.code === 'ERR_CANCELED') return
       console.log('err in loadIncidents-->', err)
     }
   }
 
+  // live tab: sirf tab change pe fetch — userLoc change pe dobara nahi
   useEffect(() => {
-    loadIncidents(activeTab, userLoc)
+    if (activeTab !== 'live') return
+    const controller = new AbortController()
+    loadIncidents('live', null, controller.signal)
+    return () => controller.abort()
+  }, [activeTab])
+
+  // nearby tabs: tab ya location change pe fetch
+  useEffect(() => {
+    if (activeTab === 'live' || !userLoc) return
+    const controller = new AbortController()
+    loadIncidents(activeTab, userLoc, controller.signal)
+    return () => controller.abort()
   }, [activeTab, userLoc])
+
+  /* ========== SEARCH LOCATION — radius ke andar filter ========== */
+  const searchRadius = activeTab === 'live' ? RADIUS.zone : RADIUS[activeTab]
+
+  useEffect(() => {
+    if (!searchedLocation) {
+      setSearchIncidents([])
+      return
+    }
+
+    const controller = new AbortController()
+
+    const fetchSearchArea = async () => {
+      try {
+        const res = await axiosClient.get('/incidents/nearby', {
+          params: {
+            lat: searchedLocation.lat,
+            lng: searchedLocation.lng,
+            radius: searchRadius,
+          },
+          signal: controller.signal,
+        })
+        setSearchIncidents(res?.data?.incidents || res?.data || [])
+      } catch (err) {
+        if (err?.code === 'ERR_CANCELED') return
+        console.log('search area fetch failed:', err)
+        setSearchIncidents([])
+      }
+    }
+
+    fetchSearchArea()
+    return () => controller.abort()
+  }, [searchedLocation, searchRadius])
+
+  const isSearchActive = searchedLocation !== null
+  const visibleIncidents = isSearchActive ? searchIncidents : incidents
 
   /* ========== NEARBY VERIFIED ALERT (poll 30s) ========== */
   useEffect(() => {
@@ -87,6 +160,55 @@ function App() {
   const closeReport = () => {
     setReportOpen(false)
     setSelectedLocation(null)
+    setImageUrl(null)
+    setDetectedType(null)
+    setDetectedSeverity(null)
+    setClassifyError(null)
+  }
+
+  /* ========== PHOTO SELECT -> UPLOAD -> AI CLASSIFY ========== */
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setImageUrl(null)
+    setDetectedType(null)
+    setDetectedSeverity(null)
+    setClassifyError(null)
+
+    setImageUploading(true)
+
+    try {
+      const uploadData = new FormData()
+      uploadData.append('file', file)
+      const uploadRes = await axiosClient.post('/upload', uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const uploadedUrl = uploadRes.data.image_url
+      setImageUrl(uploadedUrl)
+
+      setDetecting(true)
+      const classifyRes = await axiosClient.post('/classify', { image_url: uploadedUrl })
+      console.log('CLASSIFY RAW RESULT:', classifyRes.data)
+
+      const raw = classifyRes.data?.result
+
+      const hazardType =
+        raw?.hazard_type || raw?.label || raw?.class || raw?.prediction || raw?.type || 'Unknown'
+
+      const severity =
+        raw?.severity ?? raw?.severity_level ?? raw?.confidence_level ?? null
+
+      setDetectedType(hazardType)
+      setDetectedSeverity(severity)
+
+    } catch (err) {
+      console.error('Photo upload/classify failed:', err)
+      setClassifyError('Could not analyze this photo automatically. Please try another photo.')
+    } finally {
+      setImageUploading(false)
+      setDetecting(false)
+    }
   }
 
   /* ========== SUBMIT ========== */
@@ -94,30 +216,25 @@ function App() {
     e.preventDefault()
 
     const formData = new FormData(e.target)
-    const issueType = formData.get('issueType')
-    const hazardLevel = formData.get('hazardLevel')
     const description = formData.get('description')
-    const photoFile = formData.get('photo')
 
     if (!selectedLocation) {
       alert('Please select or detect a location before submitting.')
       return
     }
+    if (!imageUrl) {
+      alert('Please upload a photo first.')
+      return
+    }
+    if (!detectedType) {
+      alert('Still analyzing the photo, please wait a moment and try again.')
+      return
+    }
 
     try {
-      let imageUrl = null
-      if (photoFile && photoFile.size > 0) {
-        const uploadData = new FormData()
-        uploadData.append('file', photoFile)
-        const up = await axiosClient.post('/upload', uploadData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
-        imageUrl = up.data.image_url
-      }
-
       const payload = {
-        hazard_type: issueType,
-        severity: severityMap[hazardLevel] || 1,
+        hazard_type: detectedType,
+        severity: toSeverityInt(detectedSeverity),
         lat: selectedLocation.latitude,
         lng: selectedLocation.longitude,
         image_url: imageUrl,
@@ -126,10 +243,13 @@ function App() {
 
       const res = await axiosClient.post('/reports', payload)
 
-      alert(`Report submitted successfully!\n\nYour Report ID is:\n${res.data.report_id}\n\nPlease save this ID to check your report status.`)
+      alert(`Report submitted successfully!\n\nDetected: ${detectedType}\n\nYour Report ID is:\n${res.data.report_id}\n\nPlease save this ID to check your report status.`)
 
       setReportOpen(false)
       setSelectedLocation(null)
+      setImageUrl(null)
+      setDetectedType(null)
+      setDetectedSeverity(null)
       e.target.reset()
 
       await loadIncidents(activeTab, userLoc)
@@ -159,6 +279,11 @@ function App() {
   }
 
   const handleLogout = () => alert('You have been logged out.')
+
+  /* ========== DERIVED: severity-wise sorted list ========== */
+  const sortedIncidents = [...visibleIncidents].sort(
+    (a, b) => (b?.severity || 0) - (a?.severity || 0)
+  )
 
   /* ========== UI ========== */
   return (
@@ -212,17 +337,47 @@ function App() {
 
           <section className="map-section">
             <div className="map-placeholder">
-              <Map incidents={incidents} center={userLoc} />
+              <HazardMap
+                incidents={visibleIncidents}
+                center={userLoc}
+                activeTab={activeTab}
+                radius={activeTab !== 'live' ? RADIUS[activeTab] : null}
+                searchedLocation={searchedLocation}
+                onSearchLocation={setSearchedLocation}
+                searchRadius={searchRadius}
+              />
             </div>
           </section>
 
           <aside className="alerts" id="alerts">
-            <h2>ALERT LIST</h2>
+            {/* HEADER — tab ke hisaab se count + radius */}
+            <h2>
+              {activeTab === 'live' && !isSearchActive
+                ? 'ALL HAZARDS'
+                : `NEARBY HAZARDS (${sortedIncidents.length})`}
+            </h2>
+
+            {isSearchActive ? (
+              <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#9aa' }}>
+                Within {searchRadius >= 1000 ? `${searchRadius / 1000}km` : `${searchRadius}m`} of searched location
+              </p>
+            ) : activeTab !== 'live' ? (
+              <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#9aa' }}>
+                {RADIUS_LABEL[activeTab]}
+              </p>
+            ) : null}
+
             <div className="alerts-list">
-              {incidents.length === 0 ? (
-                <p className="no-reports">No hazard reports yet.</p>
+              {sortedIncidents.length === 0 ? (
+                <p className="no-reports">
+                  {isSearchActive
+                    ? 'No data as of now.'
+                    : activeTab === 'live'
+                      ? 'No hazard reports yet.'
+                      : 'No hazards in this area.'}
+                </p>
               ) : (
-                incidents.map((inc, i) => (
+                sortedIncidents.map((inc, i) => (
                   <div key={inc?.id || inc?.incident_id || i} className={`alert sev-${inc?.severity}`}>
                     <strong>Severity {inc?.severity}</strong>
                     <p>{inc?.hazard_type}</p>
@@ -253,27 +408,33 @@ function App() {
             <form onSubmit={handleSubmit}>
 
               <div className="form-group">
-                <label>Issue Type</label>
-                <select name="issueType" required>
-                  <option value="">Select an issue</option>
-                  <option value="Waterlogging">Waterlogging</option>
-                  <option value="Road Collapse">Road Collapse</option>
-                  <option value="Blocked Drain">Blocked Drain</option>
-                  <option value="Debris / Obstruction">Debris / Obstruction</option>
-                  <option value="Flooding">Flooding</option>
-                  <option value="Other">Other</option>
-                </select>
+                <label>Upload Photo</label>
+                <input
+                  name="photo"
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  required
+                />
               </div>
 
-              <div className="form-group">
-                <label>Hazard Level</label>
-                <select name="hazardLevel" required>
-                  <option value="">Select hazard level</option>
-                  <option value="Critical">🔴 Critical</option>
-                  <option value="Caution">🟡 Caution</option>
-                  <option value="Low">🟢 Low</option>
-                </select>
-              </div>
+              {imageUploading && <p style={{ color: '#9aa' }}>Uploading photo...</p>}
+              {detecting && <p style={{ color: '#9aa' }}>Analyzing photo, please wait...</p>}
+              {classifyError && <p style={{ color: '#e07b7b' }}>{classifyError}</p>}
+
+              {detectedType && !detecting && (
+                <div className="form-group" style={{
+                  background: '#1e2a2f', padding: '10px 14px',
+                  borderRadius: '6px', border: '1px solid #3a5a5a',
+                }}>
+                  <p style={{ margin: 0 }}>
+                    <strong>Detected Hazard Type:</strong> {detectedType}
+                  </p>
+                  <p style={{ margin: '4px 0 0' }}>
+                    <strong>Detected Severity:</strong> {detectedSeverity ?? 'N/A'}
+                  </p>
+                </div>
+              )}
 
               <div className="form-group">
                 <LocationPicker onLocationChange={setSelectedLocation} />
@@ -284,14 +445,15 @@ function App() {
                 <textarea name="description" rows="4" placeholder="Describe the hazard..." required />
               </div>
 
-              <div className="form-group">
-                <label>Upload Photo</label>
-                <input name="photo" type="file" accept="image/*" />
-              </div>
-
               <div className="modal-actions">
                 <button type="button" className="cancel-button" onClick={closeReport}>CANCEL</button>
-                <button type="submit" className="submit-button">SUBMIT REPORT</button>
+                <button
+                  type="submit"
+                  className="submit-button"
+                  disabled={imageUploading || detecting || !detectedType}
+                >
+                  SUBMIT REPORT
+                </button>
               </div>
 
             </form>
