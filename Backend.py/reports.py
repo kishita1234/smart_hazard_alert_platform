@@ -24,6 +24,7 @@ async def create_report(report: ReportCreate, db: AsyncSession = Depends(get_db)
         "severity": report.severity,
         "user_id": report.user_id,
         "image_url": report.image_url,
+        "description": report.description,   # 👈 NAYA
     }
     # ANTI-SPAM: same user, bilkul same spot (10m), 2 min me dobara -> block
     if report.user_id:
@@ -42,8 +43,8 @@ async def create_report(report: ReportCreate, db: AsyncSession = Depends(get_db)
             )
     # STEP 1: report insert
     res = await db.execute(text(f"""
-        insert into reports (user_id, hazard_type, geom, severity, image_url)
-        values (:user_id, :hazard_type, {point}, :severity, :image_url)
+        insert into reports (user_id, hazard_type, geom, severity, image_url, description)
+        values (:user_id, :hazard_type, {point}, :severity, :image_url, :description)
         returning id
     """), params)
     report_id = res.scalar()
@@ -111,7 +112,7 @@ async def list_reports(
     severity: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    sql = """select id, hazard_type, status, severity,
+    sql = """select id, hazard_type, status, severity, description,
                     ST_Y(geom::geometry) as lat,
                     ST_X(geom::geometry) as lng,
                     created_at
@@ -140,7 +141,7 @@ async def list_reports(
 async def get_report(report_id: str, db: AsyncSession = Depends(get_db)):
     res = await db.execute(
         text("""
-            select id, hazard_type, status, severity,
+            select id, hazard_type, status, severity, description,
                    ST_Y(geom::geometry) as lat,
                    ST_X(geom::geometry) as lng,
                    incident_id, created_at
