@@ -1,20 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 import Map from './map'
 import ProfileDropdown from './components/ProfileDropdown'
 import AdminLogin from './components/AdminLogin'
 import LocationPicker from './components/LocationPicker'
+import { checkHealth } from "./api";
+import axiosClient from './axios'
 
 function App() {
-
-  /* =========================
-     ADMIN PAGE
-     ========================= */
-
-  if (window.location.pathname === '/admin') {
-    return <AdminLogin />
-  }
-
+    useEffect(() => {
+    checkHealth()
+        .then(data => {
+            console.log("BACKEND CONNECTED:", data);
+        })
+        .catch(error => {
+            console.error("BACKEND CONNECTION FAILED:", error);
+        });
+}, []);
 
   /* =========================
      REPORTS
@@ -45,30 +47,101 @@ function App() {
 
 
   /* =========================
-     REPORT MODAL
+     NEARBY INCIDENT ALERT
      ========================= */
 
-  const openReport = () => {
-    setReportOpen(true)
-  }
+  const [nearbyAlert, setNearbyAlert] = useState(null)
 
-  const closeReport = () => {
-    setReportOpen(false)
-    setSelectedLocation(null)
+
+  useEffect(() => {
+
+    const checkNearbyIncidents = async () => {
+
+      try {
+
+        console.log('Checking for nearby incidents...')
+
+        const response = await axiosClient.get('/incidents/nearby')
+
+        const incidents = response.data
+
+        console.log(
+          'Nearby incidents received:',
+          incidents
+        )
+
+
+        const verifiedIncident = incidents.find(
+          (incident) =>
+            incident.verified === true ||
+            incident.status === 'VERIFIED'
+        )
+
+
+        if (verifiedIncident) {
+
+          setNearbyAlert(verifiedIncident)
+
+        } else {
+
+          setNearbyAlert(null)
+
+        }
+
+      } catch (error) {
+
+        console.log(
+          'Nearby incident check failed:',
+          error
+        )
+
+      }
+
+    }
+
+
+    // Check immediately when homepage loads
+    checkNearbyIncidents()
+
+
+    // Check again every 30 seconds
+    const interval = setInterval(
+      checkNearbyIncidents,
+      30000
+    )
+
+
+    return () => clearInterval(interval)
+
+  }, [])
+
+
+  /* =========================
+     ADMIN PAGE
+     ========================= */
+
+  if (window.location.pathname === '/admin') {
+    return <AdminLogin />
   }
 
 
   /* =========================
-     CREATE REPORT ID
+     REPORT MODAL
      ========================= */
 
-  const generateReportId = () => {
+  const openReport = () => {
 
-    const randomNumber = Math.floor(
-      100000 + Math.random() * 900000
-    )
+    setReportOpen(true)
 
-    return `DRS-${randomNumber}`
+  }
+
+
+  const closeReport = () => {
+
+    setReportOpen(false)
+
+    setSelectedLocation(null)
+
   }
 
 
@@ -76,7 +149,7 @@ function App() {
      SUBMIT REPORT
      ========================= */
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
 
     e.preventDefault()
 
@@ -85,6 +158,7 @@ function App() {
     const issueType = formData.get('issueType')
     const hazardLevel = formData.get('hazardLevel')
     const description = formData.get('description')
+    const photoFile = formData.get('photo')
 
 
     /* =========================
@@ -98,63 +172,107 @@ function App() {
       )
 
       return
-    }
-
-
-    /* =========================
-       CREATE REPORT
-       ========================= */
-
-    const newReport = {
-
-      id: generateReportId(),
-
-      issueType,
-
-      hazardLevel,
-
-      location: selectedLocation,
-
-      description,
-
-      status: 'UNDER REVIEW',
-
-      date: new Date().toLocaleString(),
 
     }
 
 
-    /* =========================
-       UPDATE REPORTS
-       ========================= */
+    try {
 
-    const updatedReports = [
-      ...reports,
-      newReport
-    ]
+      let imageUrl = null
+
+      // Agar photo select ki hai, pehle usko upload karo
+      if (photoFile && photoFile.size > 0) {
+
+        const uploadData = new FormData()
+        uploadData.append('file', photoFile)
+
+        const uploadRes = await axiosClient.post(
+          '/upload',
+          uploadData,
+          { headers: { 'Content-Type': 'multipart/form-data' } }
+        )
+
+        imageUrl = uploadRes.data.image_url
+
+      }
+
+      // Hazard level ko backend ke severity number me convert karo
+      const severityMap = { Critical: 5, Caution: 3, Low: 1 }
+
+      const payload = {
+        hazard_type: issueType,
+        severity: severityMap[hazardLevel] || 1,
+        lat: selectedLocation.latitude,
+        lng: selectedLocation.longitude,
+        image_url: imageUrl,
+        description: description,
+      }
+
+      const reportRes = await axiosClient.post('/reports', payload)
 
 
-    setReports(updatedReports)
+      /* =========================
+         CREATE REPORT (backend response se)
+         ========================= */
+
+      const newReport = {
+
+        id: reportRes.data.report_id,   // 👈 FIXED — backend "report_id" bhejta hai, "id" nahi
+
+        issueType,
+
+        hazardLevel,
+
+        location: selectedLocation,
+
+        description,
+
+        status: 'UNDER REVIEW',   // POST response status nahi bhejta, isliye placeholder
+
+        date: new Date().toLocaleString(),
+
+      }
 
 
-    localStorage.setItem(
-      'drishtiReports',
-      JSON.stringify(updatedReports)
-    )
+      /* =========================
+         UPDATE REPORTS
+         ========================= */
+
+      const updatedReports = [
+        ...reports,
+        newReport
+      ]
 
 
-    setReportOpen(false)
-
-    setSelectedLocation(null)
+      setReports(updatedReports)
 
 
-    /* =========================
-       SUCCESS MESSAGE
-       ========================= */
+      localStorage.setItem(
+        'drishtiReports',
+        JSON.stringify(updatedReports)
+      )
 
-    alert(
-      `Report submitted successfully!\n\nYour Report ID is:\n${newReport.id}\n\nPlease save this ID to check your report status.`
-    )
+
+      setReportOpen(false)
+
+      setSelectedLocation(null)
+
+
+      /* =========================
+         SUCCESS MESSAGE
+         ========================= */
+
+      alert(
+        `Report submitted successfully!\n\nYour Report ID is:\n${newReport.id}\n\nPlease save this ID to check your report status.`
+      )
+
+    } catch (error) {
+
+      console.error('Report submit failed:', error)
+
+      alert('Something went wrong while submitting the report. Please try again.')
+
+    }
 
   }
 
@@ -181,22 +299,20 @@ function App() {
   }
 
 
-  const checkStatus = (e) => {
+  const checkStatus = async (e) => {
 
     e.preventDefault()
 
-    const report = reports.find(
-      (item) =>
-        item.id.toLowerCase() ===
-        statusSearch.trim().toLowerCase()
-    )
+    try {
 
+      // Backend se seedha uss report_id ka detail maango
+      const res = await axiosClient.get(`/reports/${statusSearch.trim()}`)
 
-    if (report) {
+      setStatusResult(res.data.report)   // backend { report: {...} } shape me bhejta hai
 
-      setStatusResult(report)
+    } catch (error) {
 
-    } else {
+      console.log('Status check failed:', error)
 
       setStatusResult('not-found')
 
@@ -268,6 +384,50 @@ function App() {
         </nav>
 
       </header>
+
+
+      {/* =========================
+          NEARBY VERIFIED ALERT
+         ========================= */}
+
+      {nearbyAlert && (
+
+        <div
+          className="nearby-alert"
+          style={{
+            margin: '10px 16px',
+            padding: '14px 18px',
+            background: '#382629',
+            border: '1px solid #b85c5c',
+            borderLeft: '5px solid #b85c5c',
+            borderRadius: '6px',
+            color: '#f3f4f4'
+          }}
+        >
+
+          <strong>
+            🚨 VERIFIED HAZARD NEARBY
+          </strong>
+
+
+          <p style={{ margin: '6px 0 0' }}>
+            {nearbyAlert.hazard_type ||
+              nearbyAlert.issueType ||
+              'Hazard reported nearby'}
+          </p>
+
+
+          {nearbyAlert.severity && (
+
+            <small>
+              Severity: {nearbyAlert.severity}
+            </small>
+
+          )}
+
+        </div>
+
+      )}
 
 
       {/* =========================
@@ -588,7 +748,6 @@ function App() {
 
               <div className="modal-actions">
 
-
                 <button
                   type="button"
                   className="cancel-button"
@@ -604,7 +763,6 @@ function App() {
                 >
                   SUBMIT REPORT
                 </button>
-
 
               </div>
 
@@ -666,7 +824,7 @@ function App() {
 
                 <input
                   type="text"
-                  placeholder="Example: DRS-123456"
+                  placeholder="Paste the Report ID here"
                   value={statusSearch}
                   onChange={(e) =>
                     setStatusSearch(e.target.value)
@@ -732,16 +890,25 @@ function App() {
                         Issue:
                       </strong>{' '}
 
-                      {statusResult.issueType}
+                      {statusResult.hazard_type}
                     </p>
 
 
                     <p>
                       <strong>
-                        Hazard Level:
+                        Severity:
                       </strong>{' '}
 
-                      {statusResult.hazardLevel || 'Caution'}
+                      {statusResult.severity}
+                    </p>
+
+
+                    <p>
+                      <strong>
+                        Description:
+                      </strong>{' '}
+
+                      {statusResult.description || 'N/A'}
                     </p>
 
 
@@ -750,9 +917,7 @@ function App() {
                         Location:
                       </strong>{' '}
 
-                      {statusResult.location?.latitude
-                        ? `${statusResult.location.latitude}, ${statusResult.location.longitude}`
-                        : 'Location unavailable'}
+                      {statusResult.lat}, {statusResult.lng}
                     </p>
 
 
@@ -770,7 +935,7 @@ function App() {
                         Submitted:
                       </strong>{' '}
 
-                      {statusResult.date}
+                      {new Date(statusResult.created_at).toLocaleString()}
                     </p>
 
                   </>
