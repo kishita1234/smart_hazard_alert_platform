@@ -1,3 +1,5 @@
 .env
 __pycache__/
-*.pyc
+*.pycnode_modules/
+*.mp4
+node_modules/
