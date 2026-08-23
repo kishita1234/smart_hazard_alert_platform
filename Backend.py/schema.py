@@ -11,6 +11,7 @@ class ReportCreate(BaseModel):
     hazard_type: str
     lat: float
     lng: float
+    description: str | None = None   # 👈 NAYA
     severity: int | None = None    # optional (AI baad me bharega)
     user_id: str | None = None     # optional abhi
     image_url: str | None = None
