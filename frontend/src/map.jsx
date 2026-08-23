@@ -7,45 +7,28 @@ import {
 } from 'react-leaflet'
 
 import 'leaflet/dist/leaflet.css'
+import axiosClient from './config/axios'
 
 
 function Map() {
 
   const [incidents, setIncidents] = useState([])
 
-
-  /* =========================
-     GET INCIDENTS FROM BACKEND
-     ========================= */
-
+  const fetchIncidents = async () => {
+    try {
+      const res = await axiosClient.get('/incidents')
+      console.log("res", res)
+      if (res.status == 200) {
+        setIncidents(res?.data?.incidents || [])
+      } else {
+        console.log("err in fetchIncidents")
+      }
+    } catch (err) {
+      console.log("err in fetchIncidents-->", err)
+    }
+  }
   useEffect(() => {
-
-    fetch('http://192.168.1.2:8000/incidents')
-
-      .then((res) => {
-
-        if (!res.ok) {
-          throw new Error(`Server returned ${res.status}`)
-        }
-
-        return res.json()
-
-      })
-
-      .then((data) => {
-
-        console.log('FETCHING BACKEND:', data)
-
-        setIncidents(data.incidents || [])
-
-      })
-
-      .catch((err) => {
-
-        console.error('FAILED TO FETCH:', err)
-
-      })
-
+    fetchIncidents();
   }, [])
 
 
@@ -70,16 +53,16 @@ function Map() {
           BACKEND INCIDENT MARKERS
          ========================= */}
 
-      {incidents.map((incident, index) => (
+      {incidents?.length > 0 && incidents?.map((incident, index) => (
         <Marker
-          key={incident.id || index}
-          position={[incident.lat, incident.lng]}
+          key={incident?.id || index}
+          position={[incident?.latitude, incident?.longitude]}
         >
           <Popup>
-            <strong>{incident.hazard_type || 'Hazard'}</strong>
+            <strong>{incident?.hazard_type || 'Hazard'}</strong>
             <br />
-            Severity: {incident.severity} <br />
-            Status: {incident.status}
+            Severity: {incident?.severity} <br />
+            Status: {incident?.status}
           </Popup>
         </Marker>
       ))}
