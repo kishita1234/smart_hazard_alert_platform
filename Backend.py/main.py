@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_db
 from user import router as user_router
 from fastapi.middleware.cors import CORSMiddleware
+import camera_monitor
 
 import reports
 import user
@@ -27,6 +28,7 @@ app.include_router(user.router)
 app.include_router(incident.router)
 app.include_router(storage.router)
 app.include_router(classify.router)
+app.include_router(camera_monitor.router)
 
 @app.get("/health")
 async def health(db: AsyncSession = Depends(get_db)):
