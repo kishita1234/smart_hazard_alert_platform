@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import './App.css'
-import Map from './Map'
+import Map from './map'
 import ProfileDropdown from './components/ProfileDropdown'
 import AdminLogin from './components/AdminLogin'
 import LocationPicker from './components/LocationPicker'
